@@ -80,7 +80,7 @@ ros2 launch motion_control_rqt display_motor_manager_node.launch.py
 Run the RQt rocking-chair robot control UI.
 
 ```bash
-ros2 launch motion_control_rqt rocking_chair_robot_manager.launch.py
+ros2 launch motion_control_rqt active_robot_manager.launch.py
 ```
 
 Run MIDI motor control.
@@ -169,7 +169,7 @@ ros2 launch motion_control_rqt display_motor_manager_node.launch.py
 RQt rocking-chair 로봇 제어 UI를 실행합니다.
 
 ```bash
-ros2 launch motion_control_rqt rocking_chair_robot_manager.launch.py
+ros2 launch motion_control_rqt active_robot_manager.launch.py
 ```
 
 MIDI 모터 제어를 실행합니다.

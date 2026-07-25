@@ -47,7 +47,7 @@ Default launch files read and write runtime files under:
 
 | Type | Default path |
 | --- | --- |
-| Motor manager YAML | `~/colcon_ws/files/motor_manager/example_ethercat_zeroerr.yaml` |
+| Motor manager YAML | `~/colcon_ws/files/motor_manager/active_motor_manager.yaml` |
 | Robot manager YAML | `~/colcon_ws/files/robot_manager/rocking_chair.yaml` |
 | Motion CSV | `~/colcon_ws/files/robot_manager/rocking_chair.csv` |
 
@@ -96,19 +96,19 @@ ros2 launch motion_control_rqt display_motor_manager_node.launch.py \
 Run `motion_control_rqt` with the motor manager bridge and rocking-chair robot manager.
 
 ```bash
-ros2 launch motion_control_rqt rocking_chair_robot_manager.launch.py
+ros2 launch motion_control_rqt active_robot_manager.launch.py
 ```
 
 Override both runtime configs:
 
 ```bash
-ros2 launch motion_control_rqt rocking_chair_robot_manager.launch.py \
-  motor_config_file:=$HOME/colcon_ws/files/motor_manager/example_ethercat_zeroerr.yaml \
+ros2 launch motion_control_rqt active_robot_manager.launch.py \
+  motor_config_file:=$HOME/colcon_ws/files/motor_manager/active_motor_manager.yaml \
   robot_config_file:=$HOME/colcon_ws/files/robot_manager/rocking_chair.yaml
 ```
 
 `display_motor_manager_node.launch.py` opens the standard `MotorManagerWidget`.
-`rocking_chair_robot_manager.launch.py` sets `use_robot_manager_widget:=true`,
+`active_robot_manager.launch.py` sets `use_robot_manager_widget:=true`,
 so the RQt plugin uses `RobotManagerWidget`. `RobotManagerWidget` inherits from
 `MotorManagerWidget` and adds a second `Robot Manager` tab.
 
@@ -167,7 +167,7 @@ Override both runtime configs:
 
 ```bash
 ros2 launch motion_control_robot robot_manager_node.launch.py \
-  motor_config_file:=$HOME/colcon_ws/files/motor_manager/example_ethercat_zeroerr.yaml \
+  motor_config_file:=$HOME/colcon_ws/files/motor_manager/active_motor_manager.yaml \
   robot_config_file:=$HOME/colcon_ws/files/robot_manager/rocking_chair.yaml
 ```
 
@@ -266,7 +266,7 @@ source install/setup.bash
 
 | Type | Default path |
 | --- | --- |
-| Motor manager YAML | `~/colcon_ws/files/motor_manager/example_ethercat_zeroerr.yaml` |
+| Motor manager YAML | `~/colcon_ws/files/motor_manager/active_motor_manager.yaml` |
 | Robot manager YAML | `~/colcon_ws/files/robot_manager/rocking_chair.yaml` |
 | Motion CSV | `~/colcon_ws/files/robot_manager/rocking_chair.csv` |
 
@@ -315,19 +315,19 @@ ros2 launch motion_control_rqt display_motor_manager_node.launch.py \
 `motion_control_rqt`를 motor manager bridge, rocking-chair robot manager와 함께 실행한다.
 
 ```bash
-ros2 launch motion_control_rqt rocking_chair_robot_manager.launch.py
+ros2 launch motion_control_rqt active_robot_manager.launch.py
 ```
 
 두 runtime config를 모두 지정하려면:
 
 ```bash
-ros2 launch motion_control_rqt rocking_chair_robot_manager.launch.py \
-  motor_config_file:=$HOME/colcon_ws/files/motor_manager/example_ethercat_zeroerr.yaml \
+ros2 launch motion_control_rqt active_robot_manager.launch.py \
+  motor_config_file:=$HOME/colcon_ws/files/motor_manager/active_motor_manager.yaml \
   robot_config_file:=$HOME/colcon_ws/files/robot_manager/rocking_chair.yaml
 ```
 
 `display_motor_manager_node.launch.py`는 기본 `MotorManagerWidget`을 연다.
-`rocking_chair_robot_manager.launch.py`는 `use_robot_manager_widget:=true`를
+`active_robot_manager.launch.py`는 `use_robot_manager_widget:=true`를
 설정하므로 RQt plugin이 `RobotManagerWidget`을 사용한다.
 `RobotManagerWidget`은 `MotorManagerWidget`을 상속하고 두 번째
 `Robot Manager` 탭을 추가한다.
@@ -386,7 +386,7 @@ ros2 launch motion_control_robot robot_manager_node.launch.py
 
 ```bash
 ros2 launch motion_control_robot robot_manager_node.launch.py \
-  motor_config_file:=$HOME/colcon_ws/files/motor_manager/example_ethercat_zeroerr.yaml \
+  motor_config_file:=$HOME/colcon_ws/files/motor_manager/active_motor_manager.yaml \
   robot_config_file:=$HOME/colcon_ws/files/robot_manager/rocking_chair.yaml
 ```
 

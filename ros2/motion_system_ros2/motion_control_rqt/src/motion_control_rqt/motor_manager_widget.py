@@ -125,7 +125,7 @@ class MotorManagerWidget(QMainWindow):
 
 
     def _resolve_config_file(self, config_file):
-        file_name = os.path.basename(config_file) if config_file else 'example_ethercat_zeroerr.yaml'
+        file_name = os.path.basename(config_file) if config_file else 'active_motor_manager.yaml'
         files_config = os.path.join(MOTION_SYSTEM_FILES_DIR, 'motor_manager', file_name)
         if config_file and os.path.abspath(config_file) != os.path.abspath(files_config):
             self._node.get_logger().info(

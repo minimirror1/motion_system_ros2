@@ -14,7 +14,7 @@ MOTION_SYSTEM_FILES_DIR = os.environ.get(
 DEFAULT_MOTOR_CONFIG_FILE = os.path.join(
     MOTION_SYSTEM_FILES_DIR,
     'motor_manager',
-    'example_ethercat_zeroerr.yaml',
+    'active_motor_manager.yaml',
 )
 DEFAULT_ROBOT_CONFIG_FILE = os.path.join(
     MOTION_SYSTEM_FILES_DIR,
