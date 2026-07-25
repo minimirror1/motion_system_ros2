@@ -5,7 +5,7 @@
 
 [submodule "lib/robot_manager"]
     path = lib/robot_manager
-    url = https://github.com/SeonilChoi/robot_manager.git
+    url = https://github.com/minimirror1/robot_manager.git
     branch = main
 
 [submodule "ros2/playstation_joy_interface_ros2"]
