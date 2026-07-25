@@ -184,7 +184,7 @@ private:
 
   void publish_torque_request(int8_t value)
   {
-    const uint8_t row_count = controller_indices_.back() + 1;
+    const std::size_t row_count = controller_indices_.back() + 1;
     Int8MultiArray request;
     request.data.assign(row_count, kNoChange);
     for (const uint8_t controller_index : controller_indices_) {

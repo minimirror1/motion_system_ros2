@@ -17,8 +17,6 @@
 
   <build_depend>yaml-cpp</build_depend>
   <exec_depend>yaml-cpp</exec_depend>
-  <exec_depend>robot_manager</exec_depend>
-  <exec_depend>motion_control_robot</exec_depend>
   <exec_depend>motion_control_bridge</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
