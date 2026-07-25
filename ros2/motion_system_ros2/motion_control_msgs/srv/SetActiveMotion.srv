@@ -1,0 +1,4 @@
+string file_name     # basename of an existing CSV in the robot config directory
+---
+bool success
+string message

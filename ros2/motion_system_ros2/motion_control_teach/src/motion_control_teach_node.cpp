@@ -1,13 +1,16 @@
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <limits>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -16,6 +19,10 @@
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <motion_control_msgs/msg/motor_status.hpp>
+#include <motion_control_msgs/srv/list_motion_files.hpp>
+#include <motion_control_msgs/srv/set_active_motion.hpp>
+#include <motion_control_msgs/srv/start_recording.hpp>
+#include <motion_control_msgs/srv/stop_recording.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/int8_multi_array.hpp>
 #include <std_srvs/srv/trigger.hpp>
@@ -72,6 +79,19 @@ std::filesystem::path resolve_resource_path(
   return path.is_absolute() ? path : config_directory / path;
 }
 
+std::string to_lower(std::string s)
+{
+  std::transform(
+    s.begin(), s.end(), s.begin(),
+    [](unsigned char c) {return static_cast<char>(std::tolower(c));});
+  return s;
+}
+
+bool has_csv_extension(const std::filesystem::path & path)
+{
+  return to_lower(path.extension().string()) == ".csv";
+}
+
 }  // namespace
 
 class MotionControlTeachNode : public rclcpp::Node
@@ -80,6 +100,10 @@ public:
   using MotorStatus = motion_control_msgs::msg::MotorStatus;
   using Int8MultiArray = std_msgs::msg::Int8MultiArray;
   using Trigger = std_srvs::srv::Trigger;
+  using StartRecording = motion_control_msgs::srv::StartRecording;
+  using StopRecording = motion_control_msgs::srv::StopRecording;
+  using ListMotionFiles = motion_control_msgs::srv::ListMotionFiles;
+  using SetActiveMotion = motion_control_msgs::srv::SetActiveMotion;
 
   explicit MotionControlTeachNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
   : rclcpp::Node("motion_control_teach_node", options)
@@ -108,21 +132,31 @@ public:
       std::bind(
         &MotionControlTeachNode::handle_torque_on, this,
         std::placeholders::_1, std::placeholders::_2));
-    start_recording_srv_ = create_service<Trigger>(
+    start_recording_srv_ = create_service<StartRecording>(
       "~/start_recording",
       std::bind(
         &MotionControlTeachNode::handle_start_recording, this,
         std::placeholders::_1, std::placeholders::_2));
-    stop_recording_srv_ = create_service<Trigger>(
+    stop_recording_srv_ = create_service<StopRecording>(
       "~/stop_recording",
       std::bind(
         &MotionControlTeachNode::handle_stop_recording, this,
         std::placeholders::_1, std::placeholders::_2));
+    list_motion_files_srv_ = create_service<ListMotionFiles>(
+      "~/list_motion_files",
+      std::bind(
+        &MotionControlTeachNode::handle_list_motion_files, this,
+        std::placeholders::_1, std::placeholders::_2));
+    set_active_motion_srv_ = create_service<SetActiveMotion>(
+      "~/set_active_motion",
+      std::bind(
+        &MotionControlTeachNode::handle_set_active_motion, this,
+        std::placeholders::_1, std::placeholders::_2));
 
     RCLCPP_INFO(
       get_logger(),
-      "motion_control_teach_node ready: %zu controllers, motion data '%s'.",
-      controller_indices_.size(), motion_record_path_.string().c_str());
+      "motion_control_teach_node ready: %zu controllers, motion directory '%s'.",
+      controller_indices_.size(), config_directory_.string().c_str());
   }
 
 private:
@@ -135,8 +169,7 @@ private:
       throw std::runtime_error("Invalid or missing 'robot' in " + config_file);
     }
 
-    const std::filesystem::path config_directory =
-      std::filesystem::absolute(config_file).parent_path();
+    config_directory_ = robot_config_path_.parent_path();
     std::filesystem::path configured_motion_path;
     for (const auto & robot : robots) {
       const auto controller_indices = required_as<std::vector<int>>(
@@ -151,8 +184,8 @@ private:
       const std::string robot_name = required_as<std::string>(robot, "name", "robot[]");
       std::filesystem::path motion_path = resolve_resource_path(
         required_as<std::string>(robot, "motion_data_file_path", "robot[]"),
-        config_directory);
-      if (motion_path.extension() != ".csv") {
+        config_directory_);
+      if (!has_csv_extension(motion_path)) {
         motion_path /= robot_name + ".csv";
       }
       motion_path = motion_path.lexically_normal();
@@ -161,6 +194,7 @@ private:
                 "motion_control_teach supports one motion_data_file_path per robot config.");
       }
       configured_motion_path = motion_path;
+      robot_names_.push_back(robot_name);
     }
 
     if (controller_indices_.empty()) {
@@ -170,8 +204,6 @@ private:
     controller_indices_.erase(
       std::unique(controller_indices_.begin(), controller_indices_.end()),
       controller_indices_.end());
-
-    motion_record_path_ = configured_motion_path;
   }
 
   void motor_status_callback(const MotorStatus::SharedPtr msg)
@@ -213,8 +245,84 @@ private:
     RCLCPP_INFO(get_logger(), "%s", response->message.c_str());
   }
 
+  // Rejects path traversal, keeps [A-Za-z0-9._-], enforces a ".csv" extension.
+  std::optional<std::string> sanitize_file_name(
+    const std::string & raw, std::string & error) const
+  {
+    std::string name = raw;
+    const auto is_space = [](unsigned char c) {return std::isspace(c) != 0;};
+    name.erase(name.begin(), std::find_if_not(name.begin(), name.end(), is_space));
+    name.erase(std::find_if_not(name.rbegin(), name.rend(), is_space).base(), name.end());
+
+    if (name.empty()) {
+      error = "File name is empty.";
+      return std::nullopt;
+    }
+    if (name.find('/') != std::string::npos || name.find('\\') != std::string::npos) {
+      error = "File name must not contain path separators.";
+      return std::nullopt;
+    }
+    if (name.front() == '.') {
+      error = "File name must not start with '.'.";
+      return std::nullopt;
+    }
+
+    for (char & c : name) {
+      const unsigned char uc = static_cast<unsigned char>(c);
+      if (std::isalnum(uc) == 0 && c != '.' && c != '_' && c != '-') {
+        c = '_';
+      }
+    }
+
+    if (!has_csv_extension(std::filesystem::path(name))) {
+      name += ".csv";
+    }
+    if (std::filesystem::path(name).stem().string().empty()) {
+      error = "File name is empty after sanitization.";
+      return std::nullopt;
+    }
+    return name;
+  }
+
+  std::string resolve_unique(const std::string & name) const
+  {
+    if (!std::filesystem::exists(config_directory_ / name)) {
+      return name;
+    }
+    const std::filesystem::path path(name);
+    const std::string stem = path.stem().string();
+    const std::string extension = path.extension().string();
+    for (int suffix = 2; suffix < 1000; ++suffix) {
+      const std::string candidate = stem + "_" + std::to_string(suffix) + extension;
+      if (!std::filesystem::exists(config_directory_ / candidate)) {
+        return candidate;
+      }
+    }
+    return stem + "_" + std::to_string(
+      std::chrono::steady_clock::now().time_since_epoch().count()) + extension;
+  }
+
+  std::string make_auto_file_name() const
+  {
+    const std::time_t now = std::chrono::system_clock::to_time_t(
+      std::chrono::system_clock::now());
+    std::tm tm_buffer{};
+    localtime_r(&now, &tm_buffer);  // host local time (KST on the target system)
+
+    char minute_name[32];
+    std::strftime(minute_name, sizeof(minute_name), "teach_%Y%m%d_%H%M.csv", &tm_buffer);
+    if (!std::filesystem::exists(config_directory_ / minute_name)) {
+      return minute_name;
+    }
+
+    char second_name[32];
+    std::strftime(second_name, sizeof(second_name), "teach_%Y%m%d_%H%M%S.csv", &tm_buffer);
+    return resolve_unique(second_name);
+  }
+
   void handle_start_recording(
-    const std::shared_ptr<Trigger::Request>, std::shared_ptr<Trigger::Response> response)
+    const std::shared_ptr<StartRecording::Request> request,
+    std::shared_ptr<StartRecording::Response> response)
   {
     std::lock_guard<std::mutex> lk(recording_mutex_);
     if (recording_active_) {
@@ -222,18 +330,37 @@ private:
       response->message = "Recording is already in progress.";
       return;
     }
+
+    std::string name;
+    if (request->file_name.empty()) {
+      name = make_auto_file_name();
+    } else {
+      std::string error;
+      const auto sanitized = sanitize_file_name(request->file_name, error);
+      if (!sanitized) {
+        response->success = false;
+        response->message = error;
+        return;
+      }
+      name = resolve_unique(*sanitized);
+    }
+
+    motion_record_path_ = config_directory_ / name;
     motion_recording_rows_.clear();
     motion_recording_start_time_ = std::chrono::steady_clock::now();
     recording_active_ = true;
     response->success = true;
+    response->file_name = name;
     response->message = "Recording started: " + motion_record_path_.string();
     RCLCPP_INFO(get_logger(), "%s", response->message.c_str());
   }
 
   void handle_stop_recording(
-    const std::shared_ptr<Trigger::Request>, std::shared_ptr<Trigger::Response> response)
+    const std::shared_ptr<StopRecording::Request>,
+    std::shared_ptr<StopRecording::Response> response)
   {
     std::vector<std::vector<double>> rows;
+    std::filesystem::path record_path;
     {
       std::lock_guard<std::mutex> lk(recording_mutex_);
       if (!recording_active_) {
@@ -243,6 +370,7 @@ private:
       }
       recording_active_ = false;
       rows.swap(motion_recording_rows_);
+      record_path = motion_record_path_;
     }
 
     if (rows.empty() || rows.front().empty()) {
@@ -252,18 +380,152 @@ private:
       return;
     }
 
-    if (!save_motion_record(rows)) {
+    const std::string file_name = record_path.filename().string();
+    const double recorded_duration = rows.front().back();
+
+    std::error_code ec;
+    std::filesystem::create_directories(record_path.parent_path(), ec);
+    if (ec || !write_motion_csv(record_path, rows)) {
       response->success = false;
-      response->message = "Failed to write motion record to " + motion_record_path_.string();
+      response->message = "Failed to write motion record to " + record_path.string();
       RCLCPP_ERROR(get_logger(), "%s", response->message.c_str());
       return;
     }
 
-    const double recorded_duration = rows.front().back();
+    response->file_name = file_name;
+    response->duration = recorded_duration;
+
+    if (!update_robot_config(recorded_duration, file_name)) {
+      response->success = false;
+      response->message = "Recording saved to " + file_name +
+        " but failed to update active config.";
+      RCLCPP_ERROR(get_logger(), "%s", response->message.c_str());
+      return;
+    }
+
     response->success = true;
-    response->message = "Recording saved: " + motion_record_path_.string() +
+    response->message = "Recording saved and activated: " + file_name +
       " (" + std::to_string(recorded_duration) + " s).";
     RCLCPP_INFO(get_logger(), "%s", response->message.c_str());
+  }
+
+  void handle_list_motion_files(
+    const std::shared_ptr<ListMotionFiles::Request>,
+    std::shared_ptr<ListMotionFiles::Response> response)
+  {
+    std::error_code ec;
+    std::filesystem::directory_iterator it(config_directory_, ec);
+    if (ec) {
+      response->success = false;
+      response->message = "Motion directory not found: " + config_directory_.string();
+      return;
+    }
+
+    for (const auto & entry : it) {
+      if (entry.is_regular_file() && has_csv_extension(entry.path())) {
+        response->files.push_back(entry.path().filename().string());
+      }
+    }
+    std::sort(response->files.begin(), response->files.end());
+
+    response->success = true;
+    response->message = std::to_string(response->files.size()) + " motion file(s).";
+    try {
+      response->active_file = read_active_motion_file();
+    } catch (const std::exception & e) {
+      response->active_file = "";
+      response->message += " Failed to read active file: " + std::string(e.what());
+    }
+  }
+
+  void handle_set_active_motion(
+    const std::shared_ptr<SetActiveMotion::Request> request,
+    std::shared_ptr<SetActiveMotion::Response> response)
+  {
+    std::string error;
+    const auto sanitized = sanitize_file_name(request->file_name, error);
+    if (!sanitized) {
+      response->success = false;
+      response->message = error;
+      return;
+    }
+    const std::string name = *sanitized;
+    const std::filesystem::path path = config_directory_ / name;
+    if (!std::filesystem::is_regular_file(path)) {
+      response->success = false;
+      response->message = "File not found: " + path.string();
+      return;
+    }
+
+    const std::optional<double> duration = read_motion_duration(path);
+    if (!update_robot_config(duration, name)) {
+      response->success = false;
+      response->message = "Failed to update active config for " + name;
+      RCLCPP_ERROR(get_logger(), "%s", response->message.c_str());
+      return;
+    }
+
+    response->success = true;
+    response->message = "Active motion set to " + name +
+      (duration ? "" : " (no time row found, move_duration unchanged)");
+    RCLCPP_INFO(get_logger(), "%s", response->message.c_str());
+  }
+
+  // The active yaml changes at runtime now, so always re-read it from disk.
+  std::string read_active_motion_file() const
+  {
+    const YAML::Node root = YAML::LoadFile(robot_config_path_.string());
+    const YAML::Node robots = root["robot"];
+    if (!robots || !robots.IsSequence() || robots.size() == 0) {
+      throw std::runtime_error("Invalid 'robot' in " + robot_config_path_.string());
+    }
+    std::filesystem::path motion_path = resolve_resource_path(
+      required_as<std::string>(robots[0], "motion_data_file_path", "robot[]"),
+      config_directory_);
+    if (!has_csv_extension(motion_path) && !robot_names_.empty()) {
+      motion_path /= robot_names_.front() + ".csv";
+    }
+    return motion_path.filename().string();
+  }
+
+  // Row 0 is a time axis only when the CSV has more rows than controllers,
+  // mirroring robot.py::_load_motion_data; otherwise the duration is unknown.
+  std::optional<double> read_motion_duration(const std::filesystem::path & path) const
+  {
+    std::ifstream input(path);
+    if (!input) {
+      return std::nullopt;
+    }
+
+    std::string first_line;
+    std::size_t line_count = 0;
+    std::string line;
+    while (std::getline(input, line)) {
+      if (line.find_first_not_of(" \t\r,") == std::string::npos) {
+        continue;
+      }
+      if (line_count == 0) {
+        first_line = line;
+      }
+      ++line_count;
+    }
+
+    if (line_count < controller_indices_.size() + 1) {
+      return std::nullopt;
+    }
+
+    const std::size_t last_comma = first_line.find_last_of(',');
+    const std::string last_value =
+      last_comma == std::string::npos ? first_line : first_line.substr(last_comma + 1);
+    try {
+      const double duration = std::stod(last_value);
+      if (!std::isfinite(duration) || duration < 0.0) {
+        return std::nullopt;
+      }
+      return duration;
+    } catch (const std::exception &) {
+      return std::nullopt;
+    }
   }
 
   void append_motion_record_sample(const MotorStatus & status)
@@ -300,35 +562,6 @@ private:
     }
   }
 
-  bool save_motion_record(const std::vector<std::vector<double>> & rows) const
-  {
-    std::error_code ec;
-    const std::filesystem::path directory = motion_record_path_.parent_path();
-    if (!directory.empty()) {
-      std::filesystem::create_directories(directory, ec);
-    }
-    if (ec) {
-      RCLCPP_ERROR(
-        get_logger(), "Failed to create motion record directory '%s': %s",
-        directory.string().c_str(), ec.message().c_str());
-      return false;
-    }
-
-    if (!write_motion_csv(motion_record_path_, rows)) {
-      return false;
-    }
-
-    const double recorded_duration =
-      (!rows.empty() && !rows.front().empty()) ? rows.front().back() : 0.0;
-    if (!update_robot_move_duration(recorded_duration)) {
-      RCLCPP_ERROR(
-        get_logger(), "Failed to update move_duration in '%s'.",
-        robot_config_path_.string().c_str());
-    }
-
-    return true;
-  }
-
   bool write_motion_csv(
     const std::filesystem::path & path,
     const std::vector<std::vector<double>> & rows) const
@@ -354,21 +587,33 @@ private:
     return static_cast<bool>(output);
   }
 
-  bool update_robot_move_duration(double duration) const
+  bool update_robot_config(
+    std::optional<double> duration,
+    const std::optional<std::string> & motion_file) const
   {
     if (robot_config_path_.empty()) {
       return false;
     }
 
-    YAML::Node root = YAML::LoadFile(robot_config_path_.string());
-    YAML::Node robots = root["robot"];
+    YAML::Node root;
+    YAML::Node robots;
+    try {
+      root = YAML::LoadFile(robot_config_path_.string());
+      robots = root["robot"];
+    } catch (const std::exception &) {
+      return false;
+    }
     if (!robots || !robots.IsSequence() || robots.size() == 0) {
       return false;
     }
 
-    const double rounded_duration = std::round(duration * 10.0) / 10.0;
     for (std::size_t i = 0; i < robots.size(); ++i) {
-      robots[i]["move_duration"] = rounded_duration;
+      if (duration) {
+        robots[i]["move_duration"] = std::round(*duration * 10.0) / 10.0;
+      }
+      if (motion_file) {
+        robots[i]["motion_data_file_path"] = *motion_file;
+      }
     }
 
     YAML::Emitter emitter;
@@ -422,10 +667,14 @@ private:
   rclcpp::Publisher<Int8MultiArray>::SharedPtr request_pub_;
   rclcpp::Service<Trigger>::SharedPtr torque_off_srv_;
   rclcpp::Service<Trigger>::SharedPtr torque_on_srv_;
-  rclcpp::Service<Trigger>::SharedPtr start_recording_srv_;
-  rclcpp::Service<Trigger>::SharedPtr stop_recording_srv_;
+  rclcpp::Service<StartRecording>::SharedPtr start_recording_srv_;
+  rclcpp::Service<StopRecording>::SharedPtr stop_recording_srv_;
+  rclcpp::Service<ListMotionFiles>::SharedPtr list_motion_files_srv_;
+  rclcpp::Service<SetActiveMotion>::SharedPtr set_active_motion_srv_;
 
   std::vector<uint8_t> controller_indices_;
+  std::vector<std::string> robot_names_;
+  std::filesystem::path config_directory_;
   std::filesystem::path motion_record_path_;
   std::filesystem::path robot_config_path_;
 

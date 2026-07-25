@@ -1,0 +1,5 @@
+---
+bool success
+string message
+string[] files       # sorted CSV basenames in the robot config directory
+string active_file   # basename currently set as motion_data_file_path

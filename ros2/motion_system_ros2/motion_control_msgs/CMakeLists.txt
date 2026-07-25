@@ -18,8 +18,16 @@ set(msg_files
   "msg/RobotState.msg"
 )
 
+set(srv_files
+  "srv/StartRecording.srv"
+  "srv/StopRecording.srv"
+  "srv/ListMotionFiles.srv"
+  "srv/SetActiveMotion.srv"
+)
+
 rosidl_generate_interfaces(${PROJECT_NAME}
   ${msg_files}
+  ${srv_files}
   DEPENDENCIES std_msgs
 )
 

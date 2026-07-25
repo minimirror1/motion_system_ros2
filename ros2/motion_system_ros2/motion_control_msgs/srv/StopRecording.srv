@@ -1,0 +1,5 @@
+---
+bool success
+string message
+string file_name    # basename of the saved CSV ("" on failure)
+float64 duration    # recorded duration in seconds (0.0 on failure)

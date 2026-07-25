@@ -1,0 +1,7 @@
+# Optional CSV base name. Empty -> auto "teach_YYYYMMDD_HHMM.csv" (host local time).
+# Sanitized server-side: no path separators, ".csv" enforced, collisions suffixed.
+string file_name
+---
+bool success
+string message
+string file_name    # resolved basename the recording will be saved as
