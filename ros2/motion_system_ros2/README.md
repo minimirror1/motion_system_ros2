@@ -48,7 +48,7 @@ Default launch files read and write runtime files under:
 | Type | Default path |
 | --- | --- |
 | Motor manager YAML | `~/colcon_ws/files/motor_manager/active_motor_manager.yaml` |
-| Robot manager YAML | `~/colcon_ws/files/robot_manager/rocking_chair.yaml` |
+| Robot manager YAML | `~/colcon_ws/files/robot_manager/active_robot_manager.yaml` |
 | Motion CSV | `~/colcon_ws/files/robot_manager/rocking_chair.csv` |
 
 Set `MOTION_SYSTEM_FILES_DIR` before launching if the base folder changes.
@@ -104,7 +104,7 @@ Override both runtime configs:
 ```bash
 ros2 launch motion_control_rqt active_robot_manager.launch.py \
   motor_config_file:=$HOME/colcon_ws/files/motor_manager/active_motor_manager.yaml \
-  robot_config_file:=$HOME/colcon_ws/files/robot_manager/rocking_chair.yaml
+  robot_config_file:=$HOME/colcon_ws/files/robot_manager/active_robot_manager.yaml
 ```
 
 `display_motor_manager_node.launch.py` opens the standard `MotorManagerWidget`.
@@ -136,7 +136,7 @@ Record motion data to the CSV selected by `motion_data_file_path` in a robot YAM
 ```bash
 ros2 launch motion_control_midi motion_control_midi_node.launch.py \
   record_mode:=true \
-  robot_config_file:=$HOME/colcon_ws/files/robot_manager/rocking_chair.yaml
+  robot_config_file:=$HOME/colcon_ws/files/robot_manager/active_robot_manager.yaml
 ```
 
 With `record_mode:=true`, btn1 and its LED are enabled automatically only on
@@ -168,7 +168,7 @@ Override both runtime configs:
 ```bash
 ros2 launch motion_control_robot robot_manager_node.launch.py \
   motor_config_file:=$HOME/colcon_ws/files/motor_manager/active_motor_manager.yaml \
-  robot_config_file:=$HOME/colcon_ws/files/robot_manager/rocking_chair.yaml
+  robot_config_file:=$HOME/colcon_ws/files/robot_manager/active_robot_manager.yaml
 ```
 
 ### Configuration Files
@@ -267,7 +267,7 @@ source install/setup.bash
 | Type | Default path |
 | --- | --- |
 | Motor manager YAML | `~/colcon_ws/files/motor_manager/active_motor_manager.yaml` |
-| Robot manager YAML | `~/colcon_ws/files/robot_manager/rocking_chair.yaml` |
+| Robot manager YAML | `~/colcon_ws/files/robot_manager/active_robot_manager.yaml` |
 | Motion CSV | `~/colcon_ws/files/robot_manager/rocking_chair.csv` |
 
 base folder가 바뀌면 launch 전에 `MOTION_SYSTEM_FILES_DIR` 환경변수를 설정한다.
@@ -323,7 +323,7 @@ ros2 launch motion_control_rqt active_robot_manager.launch.py
 ```bash
 ros2 launch motion_control_rqt active_robot_manager.launch.py \
   motor_config_file:=$HOME/colcon_ws/files/motor_manager/active_motor_manager.yaml \
-  robot_config_file:=$HOME/colcon_ws/files/robot_manager/rocking_chair.yaml
+  robot_config_file:=$HOME/colcon_ws/files/robot_manager/active_robot_manager.yaml
 ```
 
 `display_motor_manager_node.launch.py`는 기본 `MotorManagerWidget`을 연다.
@@ -356,7 +356,7 @@ robot YAML의 `motion_data_file_path`가 가리키는 CSV에 motion data를 녹�
 ```bash
 ros2 launch motion_control_midi motion_control_midi_node.launch.py \
   record_mode:=true \
-  robot_config_file:=$HOME/colcon_ws/files/robot_manager/rocking_chair.yaml
+  robot_config_file:=$HOME/colcon_ws/files/robot_manager/active_robot_manager.yaml
 ```
 
 `record_mode:=true`로 실행하면 `dial1`에 controller가 선택된 채널의
@@ -387,7 +387,7 @@ ros2 launch motion_control_robot robot_manager_node.launch.py
 ```bash
 ros2 launch motion_control_robot robot_manager_node.launch.py \
   motor_config_file:=$HOME/colcon_ws/files/motor_manager/active_motor_manager.yaml \
-  robot_config_file:=$HOME/colcon_ws/files/robot_manager/rocking_chair.yaml
+  robot_config_file:=$HOME/colcon_ws/files/robot_manager/active_robot_manager.yaml
 ```
 
 ### Configuration Files

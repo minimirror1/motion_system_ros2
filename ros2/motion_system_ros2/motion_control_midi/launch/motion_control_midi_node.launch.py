@@ -19,7 +19,7 @@ DEFAULT_MOTOR_CONFIG_FILE = os.path.join(
 DEFAULT_ROBOT_CONFIG_FILE = os.path.join(
     MOTION_SYSTEM_FILES_DIR,
     'robot_manager',
-    'rocking_chair.yaml',
+    'active_robot_manager.yaml',
 )
 
 

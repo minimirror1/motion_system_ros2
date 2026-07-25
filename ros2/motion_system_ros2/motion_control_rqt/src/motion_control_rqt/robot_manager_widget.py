@@ -83,7 +83,7 @@ class RobotManagerWidget(MotorManagerWidget):
             self._robot_config_file = os.path.join(
                 MOTION_SYSTEM_FILES_DIR,
                 'robot_manager',
-                'rocking_chair.yaml',
+                'active_robot_manager.yaml',
             )
 
     def _resolve_motion_data_path(self, path, config_dir, robot_name):

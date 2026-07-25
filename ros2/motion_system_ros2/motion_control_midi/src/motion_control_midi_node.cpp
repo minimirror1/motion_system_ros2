@@ -89,7 +89,7 @@ int32_t int_at(
 }
 
 const std::filesystem::path kDefaultRobotConfigPath =
-  kDefaultFilesDir / "robot_manager" / "rocking_chair.yaml";
+  kDefaultFilesDir / "robot_manager" / "active_robot_manager.yaml";
 
 }  // namespace
 
