@@ -1,6 +1,6 @@
 [submodule "lib/motor_manager"]
     path = lib/motor_manager
-    url = https://github.com/SeonilChoi/motor_manager.git
+    url = git@github.com:minimirror1/motor_manager.git
     branch = main
 
 [submodule "lib/robot_manager"]
@@ -10,10 +10,10 @@
 
 [submodule "ros2/playstation_joy_interface_ros2"]
     path = ros2/playstation_joy_interface_ros2
-    url = https://github.com/SeonilChoi/PlayStation-JoyInterface-ROS2.git
+    url = git@github.com:minimirror1/playstation_joy_interface_ros2.git
     branch = humble
 
 [submodule "ros2/xtouch_midi_ros2"]
     path = ros2/xtouch_midi_ros2
-    url = https://github.com/SeonilChoi/xtouch_midi_ros2.git
+    url = git@github.com:minimirror1/xtouch_midi_ros2.git
     branch = main
