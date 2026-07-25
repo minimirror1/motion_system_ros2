@@ -17,3 +17,8 @@
     path = ros2/xtouch_midi_ros2
     url = git@github.com:minimirror1/xtouch_midi_ros2.git
     branch = main
+
+[submodule "ros2/motion_control_web"]
+    path = ros2/motion_control_web
+    url = git@github.com:minimirror1/motion_control_web.git
+    branch = main
