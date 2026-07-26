@@ -1,0 +1,6 @@
+string source           # "active" or "" for the live active_motor_manager.yaml, else an example_*.yaml basename
+---
+bool success
+string message
+string yaml_text
+string source_path

@@ -24,6 +24,9 @@ set(srv_files
   "srv/ListMotionFiles.srv"
   "srv/SetActiveMotion.srv"
   "srv/GetMotorConfig.srv"
+  "srv/ListMotorTemplates.srv"
+  "srv/GetMotorConfigYaml.srv"
+  "srv/SetMotorConfigYaml.srv"
 )
 
 rosidl_generate_interfaces(${PROJECT_NAME}

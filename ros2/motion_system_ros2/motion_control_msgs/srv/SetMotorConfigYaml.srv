@@ -1,0 +1,4 @@
+string yaml_text     # full replacement document; always written to the fixed active_motor_manager.yaml path
+---
+bool success
+string message

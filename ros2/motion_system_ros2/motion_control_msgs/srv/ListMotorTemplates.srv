@@ -1,0 +1,4 @@
+---
+bool success
+string message
+string[] templates   # sorted example_*.yaml basenames in the motor_manager config directory
