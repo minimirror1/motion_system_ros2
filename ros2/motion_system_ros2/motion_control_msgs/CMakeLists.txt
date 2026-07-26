@@ -23,6 +23,7 @@ set(srv_files
   "srv/StopRecording.srv"
   "srv/ListMotionFiles.srv"
   "srv/SetActiveMotion.srv"
+  "srv/GetMotorConfig.srv"
 )
 
 rosidl_generate_interfaces(${PROJECT_NAME}

@@ -1,0 +1,10 @@
+---
+bool success
+string message
+uint8[] controller_index
+float64[] lower
+float64[] upper
+float64[] speed
+float64[] gear_ratio
+float64[] rated_effort
+string[] motor_type
