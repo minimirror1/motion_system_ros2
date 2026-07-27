@@ -4,6 +4,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 MOTION_SYSTEM_FILES_DIR = os.environ.get(
@@ -25,6 +26,8 @@ DEFAULT_ROBOT_CONFIG_FILE = os.path.join(
 def generate_launch_description():
     motor_config_file = LaunchConfiguration('motor_config_file')
     robot_config_file = LaunchConfiguration('robot_config_file')
+    runtime_profile = LaunchConfiguration('runtime_profile')
+    motor_status_publish_rate_hz = LaunchConfiguration('motor_status_publish_rate_hz')
 
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -39,6 +42,16 @@ def generate_launch_description():
                 'Robot YAML containing controller_indices and motion_data_file_path.'
             ),
         ),
+        DeclareLaunchArgument(
+            'runtime_profile',
+            default_value='auto',
+            description='Runtime profile: auto, desktop, or embedded.',
+        ),
+        DeclareLaunchArgument(
+            'motor_status_publish_rate_hz',
+            default_value='0',
+            description='motor_status rate in Hz; 0 selects it from runtime_profile.',
+        ),
         Node(
             package='motion_control_bridge',
             executable='motor_manager_node',
@@ -46,6 +59,11 @@ def generate_launch_description():
             output='screen',
             parameters=[{
                 'config_file': motor_config_file,
+                'runtime_profile': runtime_profile,
+                'motor_status_publish_rate_hz': ParameterValue(
+                    motor_status_publish_rate_hz,
+                    value_type=int,
+                ),
             }],
         ),
         Node(

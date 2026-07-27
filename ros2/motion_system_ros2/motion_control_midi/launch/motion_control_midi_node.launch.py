@@ -29,6 +29,8 @@ def generate_launch_description():
     record_mode = LaunchConfiguration('record_mode')
     home_position_tolerance = LaunchConfiguration('home_position_tolerance')
     jog_mode = LaunchConfiguration('jog_mode')
+    runtime_profile = LaunchConfiguration('runtime_profile')
+    motor_status_publish_rate_hz = LaunchConfiguration('motor_status_publish_rate_hz')
 
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -59,6 +61,16 @@ def generate_launch_description():
             default_value='false',
             description='Enable jog commands that use raw encoder targets.',
         ),
+        DeclareLaunchArgument(
+            'runtime_profile',
+            default_value='auto',
+            description='Runtime profile: auto, desktop, or embedded.',
+        ),
+        DeclareLaunchArgument(
+            'motor_status_publish_rate_hz',
+            default_value='0',
+            description='motor_status rate in Hz; 0 selects it from runtime_profile.',
+        ),
         Node(
             package='motion_control_bridge',
             executable='motor_manager_node',
@@ -67,6 +79,11 @@ def generate_launch_description():
             parameters=[{
                 'config_file': motor_config_file,
                 'jog_mode': ParameterValue(jog_mode, value_type=bool),
+                'runtime_profile': runtime_profile,
+                'motor_status_publish_rate_hz': ParameterValue(
+                    motor_status_publish_rate_hz,
+                    value_type=int,
+                ),
             }],
         ),
         Node(

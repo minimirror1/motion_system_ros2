@@ -12,33 +12,33 @@
 
 class MotorManagerNode : public rclcpp::Node {
 public:
-    using MotorStatus = motion_control_msgs::msg::MotorStatus;
-    using Int8MultiArray = std_msgs::msg::Int8MultiArray;
+  using MotorStatus = motion_control_msgs::msg::MotorStatus;
+  using Int8MultiArray = std_msgs::msg::Int8MultiArray;
 
-    explicit MotorManagerNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
+  explicit MotorManagerNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
 
-    ~MotorManagerNode();
+  ~MotorManagerNode();
 
 private:
-    void motor_command_callback(const MotorStatus::SharedPtr msg);
+  void motor_command_callback(const MotorStatus::SharedPtr msg);
 
-    void request_callback(const Int8MultiArray::SharedPtr msg);
+  void request_callback(const Int8MultiArray::SharedPtr msg);
 
-    void timer_callback();
+  void timer_callback();
 
-    rclcpp::Subscription<MotorStatus>::SharedPtr motor_command_subscriber_;
+  rclcpp::Subscription<MotorStatus>::SharedPtr motor_command_subscriber_;
 
-    rclcpp::Subscription<Int8MultiArray>::SharedPtr request_subscriber_;
+  rclcpp::Subscription<Int8MultiArray>::SharedPtr request_subscriber_;
 
-    rclcpp::Publisher<MotorStatus>::SharedPtr motor_status_publisher_;
+  rclcpp::Publisher<MotorStatus>::SharedPtr motor_status_publisher_;
 
-    rclcpp::TimerBase::SharedPtr motor_status_timer_;
+  rclcpp::TimerBase::SharedPtr motor_status_timer_;
 
-    std::string config_file_;
+  std::string config_file_;
 
-    std::unique_ptr<motor_manager::MotorManager> motor_manager_;
+  std::unique_ptr<motor_manager::MotorManager> motor_manager_;
 
-    std::thread manager_run_thread_;
+  std::thread manager_run_thread_;
 };
 
 #endif // MOTOR_MANAGER_NODE_HPP_
