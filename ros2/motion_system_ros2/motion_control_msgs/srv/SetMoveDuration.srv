@@ -1,0 +1,5 @@
+# Playback duration in seconds for every robot in the config. Larger is slower.
+float64 duration
+---
+bool success
+string message

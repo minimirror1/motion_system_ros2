@@ -1,0 +1,8 @@
+# Refused when file_name is the active motion.
+string file_name
+string new_name
+---
+bool success
+string message
+# new_name after sanitization and collision resolution.
+string resolved_name

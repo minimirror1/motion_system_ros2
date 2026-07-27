@@ -1,0 +1,18 @@
+# Reads a recorded motion CSV back out of the robot config directory.
+string file_name
+# Cap on returned samples per controller; 0 means "no cap". The node strides
+# through the file so a 1 kHz recording does not blow up the rosbridge payload.
+uint32 max_samples
+---
+bool success
+string message
+# Elapsed seconds for each returned sample (the CSV time row). When the file has
+# no time row, this holds sample indices instead and duration is 0.
+float64[] time
+uint8[] controller_index
+# Controller-major: positions[c * time.size() + s] is controller_index[c] at
+# time[s].
+float64[] positions
+# Sample count before downsampling.
+uint32 total_samples
+float64 duration

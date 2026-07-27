@@ -19,8 +19,13 @@
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <motion_control_msgs/msg/motor_status.hpp>
+#include <motion_control_msgs/msg/recording_status.hpp>
+#include <motion_control_msgs/srv/delete_motion_file.hpp>
+#include <motion_control_msgs/srv/get_motion_data.hpp>
 #include <motion_control_msgs/srv/list_motion_files.hpp>
+#include <motion_control_msgs/srv/rename_motion_file.hpp>
 #include <motion_control_msgs/srv/set_active_motion.hpp>
+#include <motion_control_msgs/srv/set_move_duration.hpp>
 #include <motion_control_msgs/srv/start_recording.hpp>
 #include <motion_control_msgs/srv/stop_recording.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -104,6 +109,11 @@ public:
   using StopRecording = motion_control_msgs::srv::StopRecording;
   using ListMotionFiles = motion_control_msgs::srv::ListMotionFiles;
   using SetActiveMotion = motion_control_msgs::srv::SetActiveMotion;
+  using GetMotionData = motion_control_msgs::srv::GetMotionData;
+  using DeleteMotionFile = motion_control_msgs::srv::DeleteMotionFile;
+  using RenameMotionFile = motion_control_msgs::srv::RenameMotionFile;
+  using SetMoveDuration = motion_control_msgs::srv::SetMoveDuration;
+  using RecordingStatus = motion_control_msgs::msg::RecordingStatus;
 
   explicit MotionControlTeachNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
   : rclcpp::Node("motion_control_teach_node", options)
@@ -152,6 +162,35 @@ public:
       std::bind(
         &MotionControlTeachNode::handle_set_active_motion, this,
         std::placeholders::_1, std::placeholders::_2));
+    get_motion_data_srv_ = create_service<GetMotionData>(
+      "~/get_motion_data",
+      std::bind(
+        &MotionControlTeachNode::handle_get_motion_data, this,
+        std::placeholders::_1, std::placeholders::_2));
+    delete_motion_file_srv_ = create_service<DeleteMotionFile>(
+      "~/delete_motion_file",
+      std::bind(
+        &MotionControlTeachNode::handle_delete_motion_file, this,
+        std::placeholders::_1, std::placeholders::_2));
+    rename_motion_file_srv_ = create_service<RenameMotionFile>(
+      "~/rename_motion_file",
+      std::bind(
+        &MotionControlTeachNode::handle_rename_motion_file, this,
+        std::placeholders::_1, std::placeholders::_2));
+    set_move_duration_srv_ = create_service<SetMoveDuration>(
+      "~/set_move_duration",
+      std::bind(
+        &MotionControlTeachNode::handle_set_move_duration, this,
+        std::placeholders::_1, std::placeholders::_2));
+
+    // Transient local so a reloaded browser learns about an in-flight recording
+    // without waiting for the next tick.
+    recording_status_pub_ = create_publisher<RecordingStatus>(
+      "~/recording_status", rclcpp::QoS(1).reliable().transient_local());
+    recording_status_timer_ = create_wall_timer(
+      std::chrono::seconds(1),
+      std::bind(&MotionControlTeachNode::publish_recording_status, this));
+    publish_recording_status();
 
     RCLCPP_INFO(
       get_logger(),
@@ -471,6 +510,296 @@ private:
     RCLCPP_INFO(get_logger(), "%s", response->message.c_str());
   }
 
+  // sanitize_file_name already rejects separators, but resolve symlinks too so a
+  // link inside the motion directory cannot reach outside it.
+  std::optional<std::filesystem::path> resolve_motion_path(
+    const std::string & raw, std::string & error) const
+  {
+    const auto sanitized = sanitize_file_name(raw, error);
+    if (!sanitized) {
+      return std::nullopt;
+    }
+
+    std::error_code ec;
+    const auto base = std::filesystem::weakly_canonical(config_directory_, ec);
+    if (ec) {
+      error = "Motion directory not found: " + config_directory_.string();
+      return std::nullopt;
+    }
+    const auto candidate =
+      std::filesystem::weakly_canonical(config_directory_ / *sanitized, ec);
+    if (ec || candidate.parent_path() != base) {
+      error = "File name resolves outside the motion directory.";
+      return std::nullopt;
+    }
+    return candidate;
+  }
+
+  // Refuse to touch the file robot_manager is currently pointed at.
+  bool is_active_motion(const std::filesystem::path & path, std::string & error) const
+  {
+    try {
+      if (read_active_motion_file() == path.filename().string()) {
+        error = "Refusing to modify the active motion file: " +
+          path.filename().string();
+        return true;
+      }
+    } catch (const std::exception & e) {
+      error = "Failed to read the active motion file: " + std::string(e.what());
+      return true;
+    }
+    return false;
+  }
+
+  void handle_get_motion_data(
+    const std::shared_ptr<GetMotionData::Request> request,
+    std::shared_ptr<GetMotionData::Response> response)
+  {
+    std::string error;
+    const auto path = resolve_motion_path(request->file_name, error);
+    if (!path) {
+      response->success = false;
+      response->message = error;
+      return;
+    }
+    if (!std::filesystem::is_regular_file(*path)) {
+      response->success = false;
+      response->message = "File not found: " + path->string();
+      return;
+    }
+
+    const auto rows = read_motion_csv(*path);
+    if (!rows || rows->empty()) {
+      response->success = false;
+      response->message = "Failed to read motion data from " + path->string();
+      return;
+    }
+
+    // Row 0 is a time axis only when the file has more rows than controllers,
+    // mirroring robot.py::_load_motion_data.
+    const bool has_time_row = rows->size() >= controller_indices_.size() + 1;
+    const std::size_t first_data_row = has_time_row ? 1 : 0;
+    const std::size_t total_samples = (*rows)[first_data_row].size();
+    if (total_samples == 0) {
+      response->success = false;
+      response->message = "Motion data is empty: " + path->string();
+      return;
+    }
+
+    const std::vector<std::size_t> columns = select_columns(total_samples, request->max_samples);
+
+    response->time.reserve(columns.size());
+    for (const std::size_t column : columns) {
+      response->time.push_back(
+        has_time_row && column < (*rows)[0].size() ?
+        (*rows)[0][column] :
+        static_cast<double>(column));
+    }
+
+    for (const uint8_t controller_index : controller_indices_) {
+      const std::size_t row = first_data_row + controller_index;
+      if (row >= rows->size()) {
+        continue;
+      }
+      response->controller_index.push_back(controller_index);
+      for (const std::size_t column : columns) {
+        response->positions.push_back(
+          column < (*rows)[row].size() ? (*rows)[row][column] : 0.0);
+      }
+    }
+
+    response->total_samples = static_cast<uint32_t>(total_samples);
+    response->duration = has_time_row ? response->time.back() : 0.0;
+    response->success = true;
+    response->message = std::to_string(response->controller_index.size()) +
+      " controller(s), " + std::to_string(columns.size()) + " of " +
+      std::to_string(total_samples) + " sample(s)" +
+      (has_time_row ? "." : " (no time row found).");
+  }
+
+  void handle_delete_motion_file(
+    const std::shared_ptr<DeleteMotionFile::Request> request,
+    std::shared_ptr<DeleteMotionFile::Response> response)
+  {
+    std::string error;
+    const auto path = resolve_motion_path(request->file_name, error);
+    if (!path) {
+      response->success = false;
+      response->message = error;
+      return;
+    }
+    if (!std::filesystem::is_regular_file(*path)) {
+      response->success = false;
+      response->message = "File not found: " + path->string();
+      return;
+    }
+    if (is_active_motion(*path, error)) {
+      response->success = false;
+      response->message = error;
+      return;
+    }
+
+    std::error_code ec;
+    if (!std::filesystem::remove(*path, ec) || ec) {
+      response->success = false;
+      response->message = "Failed to delete " + path->string();
+      RCLCPP_ERROR(get_logger(), "%s", response->message.c_str());
+      return;
+    }
+
+    response->success = true;
+    response->message = "Deleted " + path->filename().string();
+    RCLCPP_INFO(get_logger(), "%s", response->message.c_str());
+  }
+
+  void handle_rename_motion_file(
+    const std::shared_ptr<RenameMotionFile::Request> request,
+    std::shared_ptr<RenameMotionFile::Response> response)
+  {
+    std::string error;
+    const auto source = resolve_motion_path(request->file_name, error);
+    if (!source) {
+      response->success = false;
+      response->message = error;
+      return;
+    }
+    if (!std::filesystem::is_regular_file(*source)) {
+      response->success = false;
+      response->message = "File not found: " + source->string();
+      return;
+    }
+    if (is_active_motion(*source, error)) {
+      response->success = false;
+      response->message = error;
+      return;
+    }
+
+    const auto sanitized = sanitize_file_name(request->new_name, error);
+    if (!sanitized) {
+      response->success = false;
+      response->message = error;
+      return;
+    }
+    const std::string resolved_name = resolve_unique(*sanitized);
+    const auto target = resolve_motion_path(resolved_name, error);
+    if (!target) {
+      response->success = false;
+      response->message = error;
+      return;
+    }
+
+    std::error_code ec;
+    std::filesystem::rename(*source, *target, ec);
+    if (ec) {
+      response->success = false;
+      response->message = "Failed to rename " + source->filename().string();
+      RCLCPP_ERROR(get_logger(), "%s", response->message.c_str());
+      return;
+    }
+
+    response->success = true;
+    response->resolved_name = resolved_name;
+    response->message = "Renamed " + source->filename().string() + " to " + resolved_name;
+    RCLCPP_INFO(get_logger(), "%s", response->message.c_str());
+  }
+
+  void handle_set_move_duration(
+    const std::shared_ptr<SetMoveDuration::Request> request,
+    std::shared_ptr<SetMoveDuration::Response> response)
+  {
+    if (!std::isfinite(request->duration) || request->duration <= 0.0) {
+      response->success = false;
+      response->message = "move_duration must be a positive, finite number.";
+      return;
+    }
+    if (!update_robot_config(request->duration, std::nullopt)) {
+      response->success = false;
+      response->message = "Failed to update move_duration.";
+      RCLCPP_ERROR(get_logger(), "%s", response->message.c_str());
+      return;
+    }
+
+    response->success = true;
+    response->message = "move_duration set to " +
+      std::to_string(std::round(request->duration * 10.0) / 10.0) + " s.";
+    RCLCPP_INFO(get_logger(), "%s", response->message.c_str());
+  }
+
+  void publish_recording_status()
+  {
+    RecordingStatus status;
+    {
+      std::lock_guard<std::mutex> lk(recording_mutex_);
+      status.active = recording_active_;
+      if (recording_active_) {
+        status.elapsed = std::chrono::duration<double>(
+          std::chrono::steady_clock::now() - motion_recording_start_time_).count();
+        status.file_name = motion_record_path_.filename().string();
+        status.sample_count = motion_recording_rows_.empty() ?
+          0 : static_cast<uint32_t>(motion_recording_rows_.front().size());
+      }
+    }
+    recording_status_pub_->publish(status);
+  }
+
+  // Evenly spaced column indices, always keeping the first and last sample so
+  // start-position and end-position comparisons stay exact.
+  static std::vector<std::size_t> select_columns(std::size_t total, uint32_t max_samples)
+  {
+    std::vector<std::size_t> columns;
+    if (max_samples == 0 || total <= max_samples) {
+      columns.resize(total);
+      for (std::size_t i = 0; i < total; ++i) {
+        columns[i] = i;
+      }
+      return columns;
+    }
+
+    const std::size_t stride = (total + max_samples - 1) / max_samples;
+    for (std::size_t i = 0; i < total; i += stride) {
+      columns.push_back(i);
+    }
+    if (columns.back() != total - 1) {
+      columns.push_back(total - 1);
+    }
+    return columns;
+  }
+
+  std::optional<std::vector<std::vector<double>>> read_motion_csv(
+    const std::filesystem::path & path) const
+  {
+    std::ifstream input(path);
+    if (!input) {
+      return std::nullopt;
+    }
+
+    std::vector<std::vector<double>> rows;
+    std::string line;
+    while (std::getline(input, line)) {
+      if (line.find_first_not_of(" \t\r,") == std::string::npos) {
+        continue;
+      }
+      std::vector<double> values;
+      std::size_t start = 0;
+      while (start <= line.size()) {
+        const std::size_t comma = line.find(',', start);
+        const std::string cell = line.substr(
+          start, comma == std::string::npos ? std::string::npos : comma - start);
+        try {
+          values.push_back(std::stod(cell));
+        } catch (const std::exception &) {
+          return std::nullopt;
+        }
+        if (comma == std::string::npos) {
+          break;
+        }
+        start = comma + 1;
+      }
+      rows.push_back(std::move(values));
+    }
+    return rows;
+  }
+
   // The active yaml changes at runtime now, so always re-read it from disk.
   std::string read_active_motion_file() const
   {
@@ -671,6 +1000,12 @@ private:
   rclcpp::Service<StopRecording>::SharedPtr stop_recording_srv_;
   rclcpp::Service<ListMotionFiles>::SharedPtr list_motion_files_srv_;
   rclcpp::Service<SetActiveMotion>::SharedPtr set_active_motion_srv_;
+  rclcpp::Service<GetMotionData>::SharedPtr get_motion_data_srv_;
+  rclcpp::Service<DeleteMotionFile>::SharedPtr delete_motion_file_srv_;
+  rclcpp::Service<RenameMotionFile>::SharedPtr rename_motion_file_srv_;
+  rclcpp::Service<SetMoveDuration>::SharedPtr set_move_duration_srv_;
+  rclcpp::Publisher<RecordingStatus>::SharedPtr recording_status_pub_;
+  rclcpp::TimerBase::SharedPtr recording_status_timer_;
 
   std::vector<uint8_t> controller_indices_;
   std::vector<std::string> robot_names_;
