@@ -8,6 +8,7 @@ class Action(Enum):
     HOME = 0
     STOP = 1
     MOVE = 2
+    MOVE_TO_START = 3
 
 
 @dataclass

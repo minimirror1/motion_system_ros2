@@ -24,6 +24,7 @@ JOY_BUTTON_SQUARE = 3
 
 JOY_BUTTON_PREVIOUS = 4
 JOY_BUTTON_NEXT = 5
+JOY_BUTTON_L1 = 6
 JOY_BUTTON_START = 9
 
 
@@ -103,6 +104,7 @@ class RobotManagerNode(Node):
             JOY_BUTTON_TRIANGLE: Action.HOME,
             JOY_BUTTON_CIRCLE: Action.MOVE,
             JOY_BUTTON_SQUARE: Action.STOP,
+            JOY_BUTTON_L1: Action.MOVE_TO_START,
         }
 
         self.is_valid_joint_status: bool = False
@@ -289,7 +291,10 @@ class RobotManagerNode(Node):
 
         # Send the action to the robot
         if should_publish_motor_command:
-            commands: joint_frame_t = self.robot_manager.set_action_frames(self.robot_actions)
+            commands, errors = self.robot_manager.set_action_frames(self.robot_actions)
+            for robot_index, message in errors:
+                self.get_logger().error(f'robot {robot_index} action failed, forcing STOP: {message}')
+                self.robot_actions[self.robot_action_indices[robot_index]].action = Action.STOP
             self.publish_motor_command(commands)
 
         self.publish_robot_state()
